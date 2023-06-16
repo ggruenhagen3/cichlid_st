@@ -42,19 +42,14 @@ def perm_mapper(seed_num, mz_col = 'mz_struct_b2_vdc', mm_col = 'mm_ABA_parent')
     sm.samap.adata.obs['mm_perm'] = sm.samap.adata.obs[mm_col]
     sm.samap.adata.obs.loc[sm.samap.adata.obs['mm_perm'] != 'unassigned', 'mm_perm'] = np.random.permutation(sm.samap.adata.obs.loc[sm.samap.adata.obs['mm_perm'] != 'unassigned', 'mm_perm'])
     perm_map = my_mapper('mz_perm', 'mm_perm')
-    perm_map = perm_map.values.tolist()
-    perm_map = list(itertools.chain(*perm_map))
     return(perm_map)
-
-def my_p(x):
-    return( 1 - (np.count_nonzero(perm_dist<x) / perm_dist.size))
 
 # Main
 # Read SAMap results
 with open('/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/mz_mm_st_oritiz_b_sm_ran_3.pkl', 'rb') as out_file:
      sm = pickle.load(out_file)
 
-# Add in structure labels the way we wnat them
+# Add in structure labels the way we want them
 st_meta = pd.read_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/st/data/st_meta.csv", index_col = 0)
 oritzg_meta = pd.read_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/oritzg_meta.csv", index_col = 0)
 sm.samap.adata.obs['mm_g_parent'] = 'unassigned'
@@ -78,21 +73,26 @@ nonzero_mask = np.array(knn[knn.nonzero()] > 0)[0]
 rows = knn.nonzero()[0][nonzero_mask]
 cols = knn.nonzero()[1][nonzero_mask]
 knn[rows, cols] = 1
-
 real = my_mapper(mz_col = 'mz_cluster', mm_col = 'mm_g_parent')
 real.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/st_oritzg_cluster_mapping_mine3.csv")
 
-# Permutations: returns a list of dataframes that contain 0/1 depending on if the permutation was greater than the real value
+# Permutations
 perm_nums = 1000
 with multiprocessing.Pool(multiprocessing.cpu_count()) as mp_pool:
     perm_list = mp_pool.starmap(perm_mapper, zip(list(range(1, perm_nums+1)), ['mz_cluster'] * perm_nums, ['mm_g_parent'] * perm_nums))
 
 # Find permutation p-values
-perm_dist = list(itertools.chain(*perm_list))
-np.quantile(perm_dist, 0.95)
-max(perm_dist)
-perm_dist = np.array(perm_dist)
-perm_p = real.applymap(my_p)
+def p_col(x):
+    all_col_values = list()
+    for i in range(0, len(perm_list)):
+        all_col_values.extend(perm_list[i].iloc[:,x].tolist())
+    ge_mat = np.greater(np.array([all_col_values]), np.array([real.iloc[:,x]]).T)
+    p = ge_mat.sum(axis=1) / (len(perm_list)*real.shape[0])
+    return(p)
 
+with multiprocessing.Pool(multiprocessing.cpu_count()) as mp_pool:
+    p_list = mp_pool.map(p_col, range(0, real.shape[1]))
+
+perm_p = pd.DataFrame(p_list, columns = real.index, index = real.columns).T
 perm_p.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/st_oritzg_cluster_mapping_mine_p3.csv")
 
