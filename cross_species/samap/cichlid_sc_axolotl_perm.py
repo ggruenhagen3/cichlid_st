@@ -12,7 +12,6 @@ import multiprocessing
 import itertools
 from functools import reduce
 from sklearn.preprocessing import LabelBinarizer
-from collections import Counter
 
 # Helper Functions
 def my_mapper(mz_col = 'mz_struct_b2_vdc', mm_col = 'mm_ABA_parent'):
@@ -43,28 +42,13 @@ def perm_mapper(seed_num, mz_col = 'mz_struct_b2_vdc', mm_col = 'mm_ABA_parent')
     perm_map = my_mapper('mz_perm', 'mm_perm')
     return(perm_map)
 
+def my_p(x):
+    return( 1 - (np.count_nonzero(perm_dist<x) / perm_dist.size))
+
 # Main
 # Read SAMap results
-with open('/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/mz_mm_st_oritiz_b_sm_ran_3.pkl', 'rb') as out_file:
+with open('/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/bb_axolotl_sm_ran.pkl', 'rb') as out_file:
      sm = pickle.load(out_file)
-
-# Add in structure labels the way we want them
-st_meta = pd.read_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/st/data/st_meta.csv", index_col = 0)
-oritzg_meta = pd.read_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/oritzg_meta.csv", index_col = 0)
-sm.samap.adata.obs['mm_g_parent'] = 'unassigned'
-sm.samap.adata.obs.loc[oritzg_meta.index, 'mm_g_parent'] = oritzg_meta['g_parent']
-sm.samap.adata.obs['mz_struct'] = sm.samap.adata.obs['mz_struct_b2_vdc']
-sm.samap.adata.obs.loc[sm.samap.adata.obs['mz_struct'] == "Dl-d", 'mz_struct'] = "Dl-v"
-sm.samap.adata.obs.loc[sm.samap.adata.obs['mz_struct'] == "SP-u", 'mz_struct'] = "Vx"
-sm.samap.adata.obs.loc[sm.samap.adata.obs['mz_struct'] == "tract", 'mz_struct'] = "ON"
-sm.samap.adata.obs['mz_sh_struct'] = 'unassigned'
-sm.samap.adata.obs.loc[st_meta.index, 'mz_sh_struct'] = st_meta['sh_struct']
-sm.samap.adata.obs['mz_sh_cluster'] = 'unassigned'
-sm.samap.adata.obs.loc[st_meta.index, 'mz_sh_cluster'] = st_meta['sh_clust']
-meta_count = pd.Series(Counter(st_meta['sh_clust']))
-sm.samap.adata.obs.loc[sm.samap.adata.obs['mz_sh_cluster'].isin(meta_count[meta_count < 5].index), 'mz_sh_cluster'] = 'unassigned'
-sm.samap.adata.obs['mz_cluster'] = 'unassigned'
-sm.samap.adata.obs.loc[st_meta.index, 'mz_cluster'] = st_meta['cluster'].astype('str')
 
 # Find real mapping values
 knn = sm.samap.adata.obsp['knn']
@@ -72,13 +56,22 @@ nonzero_mask = np.array(knn[knn.nonzero()] > 0)[0]
 rows = knn.nonzero()[0][nonzero_mask]
 cols = knn.nonzero()[1][nonzero_mask]
 knn[rows, cols] = 1
-real = my_mapper(mz_col = 'mz_cluster', mm_col = 'mm_g_parent')
-real.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/st_oritzg_cluster_mapping_mine3.csv")
+
+# Add in metadata of axolotl clusters
+am_meta = pd.read_csv('/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/axolotl_metadata.csv', index_col=0)
+am_meta['cellclusters'] = am_meta['cellclusters'].replace(["glut_SUBSET_", "GABA_SUBSET_", "epen_clus_", "npc_SUBSET_", "oligodendrocyte_", "endothelial_", "microglia_"], ["GLUT", "GABA", "EPEN", "NB", "OLIG", "ENDO", "MG"], regex=True)
+sm.samap.adata.obs['am_cluster'] = 'unassigned'
+sm.samap.adata.obs.loc[am_meta.index,'am_cluster'] = am_meta['cellclusters']
+sm.samap.adata.obs['am_region_cluster'] = 'unassigned'
+sm.samap.adata.obs.loc[am_meta.index,'am_region_cluster'] = sm.samap.adata.obs.loc[am_meta.index,'am_region'] + "_" + am_meta['cellclusters']
+
+real = my_mapper(mz_col = 'mz_good_names', mm_col = 'am_cluster')
+real.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/bb_axolotl_mapping_mine4.csv")
 
 # Permutations
 perm_nums = 1000
 with multiprocessing.Pool(multiprocessing.cpu_count()) as mp_pool:
-    perm_list = mp_pool.starmap(perm_mapper, zip(list(range(1, perm_nums+1)), ['mz_cluster'] * perm_nums, ['mm_g_parent'] * perm_nums))
+    perm_list = mp_pool.starmap(perm_mapper, zip(list(range(1, perm_nums+1)), ['mz_good_names'] * perm_nums, ['am_cluster'] * perm_nums))
 
 # Find permutation p-values
 def p_col(x):
@@ -93,5 +86,5 @@ with multiprocessing.Pool(multiprocessing.cpu_count()) as mp_pool:
     p_list = mp_pool.map(p_col, range(0, real.shape[1]))
 
 perm_p = pd.DataFrame(p_list, columns = real.index, index = real.columns).T
-perm_p.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/st_oritzg_cluster_mapping_mine_p3.csv")
+perm_p.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/bb_axolotl_mapping_mine_p4.csv")
 

@@ -7,12 +7,12 @@ from samap.analysis import (get_mapping_scores, GenePairFinder,
 from samalg import SAM
 import pandas as pd
 import numpy as np
+import scanpy as sc
 import pickle
 import multiprocessing
 import itertools
 from functools import reduce
 from sklearn.preprocessing import LabelBinarizer
-from collections import Counter
 
 # Helper Functions
 def my_mapper(mz_col = 'mz_struct_b2_vdc', mm_col = 'mm_ABA_parent'):
@@ -43,28 +43,13 @@ def perm_mapper(seed_num, mz_col = 'mz_struct_b2_vdc', mm_col = 'mm_ABA_parent')
     perm_map = my_mapper('mz_perm', 'mm_perm')
     return(perm_map)
 
+def my_p(x):
+    return( 1 - (np.count_nonzero(perm_dist<x) / perm_dist.size))
+
 # Main
 # Read SAMap results
-with open('/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/mz_mm_st_oritiz_b_sm_ran_3.pkl', 'rb') as out_file:
+with open('/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/st_turtle_sm_ran.pkl', 'rb') as out_file:
      sm = pickle.load(out_file)
-
-# Add in structure labels the way we want them
-st_meta = pd.read_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/st/data/st_meta.csv", index_col = 0)
-oritzg_meta = pd.read_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/data/oritzg_meta.csv", index_col = 0)
-sm.samap.adata.obs['mm_g_parent'] = 'unassigned'
-sm.samap.adata.obs.loc[oritzg_meta.index, 'mm_g_parent'] = oritzg_meta['g_parent']
-sm.samap.adata.obs['mz_struct'] = sm.samap.adata.obs['mz_struct_b2_vdc']
-sm.samap.adata.obs.loc[sm.samap.adata.obs['mz_struct'] == "Dl-d", 'mz_struct'] = "Dl-v"
-sm.samap.adata.obs.loc[sm.samap.adata.obs['mz_struct'] == "SP-u", 'mz_struct'] = "Vx"
-sm.samap.adata.obs.loc[sm.samap.adata.obs['mz_struct'] == "tract", 'mz_struct'] = "ON"
-sm.samap.adata.obs['mz_sh_struct'] = 'unassigned'
-sm.samap.adata.obs.loc[st_meta.index, 'mz_sh_struct'] = st_meta['sh_struct']
-sm.samap.adata.obs['mz_sh_cluster'] = 'unassigned'
-sm.samap.adata.obs.loc[st_meta.index, 'mz_sh_cluster'] = st_meta['sh_clust']
-meta_count = pd.Series(Counter(st_meta['sh_clust']))
-sm.samap.adata.obs.loc[sm.samap.adata.obs['mz_sh_cluster'].isin(meta_count[meta_count < 5].index), 'mz_sh_cluster'] = 'unassigned'
-sm.samap.adata.obs['mz_cluster'] = 'unassigned'
-sm.samap.adata.obs.loc[st_meta.index, 'mz_cluster'] = st_meta['cluster'].astype('str')
 
 # Find real mapping values
 knn = sm.samap.adata.obsp['knn']
@@ -72,13 +57,26 @@ nonzero_mask = np.array(knn[knn.nonzero()] > 0)[0]
 rows = knn.nonzero()[0][nonzero_mask]
 cols = knn.nonzero()[1][nonzero_mask]
 knn[rows, cols] = 1
-real = my_mapper(mz_col = 'mz_cluster', mm_col = 'mm_g_parent')
-real.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/st_oritzg_cluster_mapping_mine3.csv")
+
+# Add in turtle metadata
+turtle_meta = pd.read_csv("/storage/coda1/p-js585/0/ggruenhagen3/George/rich_project_pb1/data/bcs/data/turtle_meta.csv", index_col = 0)
+sm.samap.adata.obs['cp_areaident'] = 'unassigned'
+sm.samap.adata.obs.loc[turtle_meta.index, 'cp_areaident'] = turtle_meta['areaident']
+turtle_neurons_meta = pd.read_csv("~/scratch/bcs/data/turtle_neurons_meta.csv", index_col = 0)
+turtle_neurons_meta = turtle_neurons_meta.loc[turtle_neurons_meta.index.isin(sm.samap.adata.obs.index),]
+turtle_neurons_meta.loc[turtle_neurons_meta['pallial.area'] == "unassigned"] = "Unassigned"
+sm.samap.adata.obs['cp_pallial_area'] = sm.samap.adata.obs['cp_areaident']
+sm.samap.adata.obs.loc[turtle_neurons_meta.index, 'cp_pallial_area'] = turtle_neurons_meta['pallial.area']
+st_meta = pd.read_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/st/data/st_meta.csv", index_col = 0)
+sm.samap.adata.obs['mz_struct'] = sm.samap.adata.obs['mz_structure_no_order']
+
+real = my_mapper(mz_col = 'mz_struct', mm_col = 'cp_pallial_area')
+real.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/st_turtle_mapping_mine4.csv")
 
 # Permutations
 perm_nums = 1000
 with multiprocessing.Pool(multiprocessing.cpu_count()) as mp_pool:
-    perm_list = mp_pool.starmap(perm_mapper, zip(list(range(1, perm_nums+1)), ['mz_cluster'] * perm_nums, ['mm_g_parent'] * perm_nums))
+    perm_list = mp_pool.starmap(perm_mapper, zip(list(range(1, perm_nums+1)), ['mz_struct'] * perm_nums, ['cp_pallial_area'] * perm_nums))
 
 # Find permutation p-values
 def p_col(x):
@@ -93,5 +91,5 @@ with multiprocessing.Pool(multiprocessing.cpu_count()) as mp_pool:
     p_list = mp_pool.map(p_col, range(0, real.shape[1]))
 
 perm_p = pd.DataFrame(p_list, columns = real.index, index = real.columns).T
-perm_p.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/st_oritzg_cluster_mapping_mine_p3.csv")
+perm_p.to_csv("/storage/home/hcoda1/6/ggruenhagen3/scratch/bcs/results/st_turtle_mapping_mine_p4.csv")
 
