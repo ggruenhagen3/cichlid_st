@@ -8,13 +8,13 @@ This repository contains 3 directories and the code in each will be explained in
 3. [misc](https://github.com/ggruenhagen3/cichlid_st/tree/main/misc): miscellaneous scripts
 
 ## clustering
-This folder contains code to find the near-optimal clustering parameters of our cichlid spatial transcriptomics data utilizing the ChooseR approach. First, `hb_params.bash` is used create a SLURM job script for every combination of the parameters. Thse SLURM jobs call `hb_chooser.R`, which will perform bootstraps of the data and determine the silhoutte width of the combination of parameters. Finally, `hb_chooser_collect.R` collects the outputs from `hb_chooser.r` and is used to evaluate which combination of parameters is near-optimal.
+This directory contains code to find the near-optimal clustering parameters of our cichlid spatial transcriptomics data utilizing the ChooseR approach. First, `hb_params.bash` is used create a SLURM job script for every combination of the parameters. Thse SLURM jobs call `hb_chooser.R`, which will perform bootstraps of the data and determine the silhoutte width of the combination of parameters. Finally, `hb_chooser_collect.R` collects the outputs from `hb_chooser.r` and is used to evaluate which combination of parameters is near-optimal.
 
 ## cross_species
-This folder contains scripts to compare forebrain transcriptomics data across multiple vertebrate species. The 
+This directory contains scripts to compare forebrain transcriptomics data across multiple vertebrate species. Within this directory are two subdirectories corresponding to the two methods used to compare transcriptomic profiles across species: correlation (`correlation`) and SAMap approach (`samap`). We found that the latter performed better and was used as the primary method for comparisons. Within the samap directory are three scripts for every comparison of datasets. As an example, the SAMap comparison of cichlid snRNA-seq and mouse scRNA-seq from Zeisel et al utilized three scripts: `cichlid_sc_zeisel.py`, `cichlid_sc_zeisel_perm.py`, and `cichlid_sc_zeisel_driving_genes.py`. The first integrates the datasets together using SAMap, the second finds the similarity score and p-values of cell-types between the datasets, and the third finds the genes that drives these relationships.
 
 ## misc
-This folder contains many scripts for varied purposes, mainly visualization of results.
+This directory contains many scripts for varied purposes, mainly visualization of results.
 - `cell2location.py` uses cell2location to predict the location and abundance of celltypes from cichlid snRNA-seq data in spatial transcriptomics data
 - `cell2location_plots.R` plots the results from cell2location, including the composition of each cichlid brain region by celltype
 - `downsample_zeisel.R` downsamples the mouse scRNA-seq dataset from Zeisel et al by randomly removing 10% of UMIs, allowing for a comparison to the original dataset
